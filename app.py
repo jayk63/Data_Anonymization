@@ -1,7 +1,6 @@
 import streamlit as st
 import mysql.connector
 import psycopg2
-import anon
 from faker import Faker
 import pandas as pd
 import random
@@ -11,10 +10,10 @@ from datetime import datetime, timedelta
 fake = Faker()
 
 def random_integer(max_value):
-    return random.randint(0, max_value)
+    max_value = int(max_value)
+    return str(random.randint(0, max_value))
 
-
-def fake_email():
+def fake_email(data):
     return fake.email()
 
 def fake_first_name(value):
@@ -24,28 +23,30 @@ def fake_first_name(value):
 def fake_last_name(value):
     return fake.last_name()
 
-def fake_address():
+def fake_address(data):
+    fake = Faker()
     return fake.street_address()
 
-def fake_city():
+def fake_city(data):
     return fake.city()
 
-def fake_country():
+def fake_country(data):
     return fake.country()
 
-def fake_postcode():
+def fake_postcode(data):
     return fake.postcode()
 
-def random_zip():
+def random_zip(data):
     return str(random.randint(10000, 99999))
 
-def generalize_daterange():
+def generalize_daterange(data):
     return '2020-01-01 to 2020-12-31'
 
-def generalize_numrange():
+
+def generalize_numrange(data):
     return '1 to 100'
 
-def generalize_timestamp():
+def generalize_timestamp(data):
     return '2020-01-01 00:00:00'
 
 def partial_masking(data):
@@ -54,7 +55,7 @@ def partial_masking(data):
 def full_masking(data):
     return '*' * len(data)
 
-def randomized_date():
+def randomized_date(data):
     start_date = datetime.strptime('2020-01-01', '%Y-%m-%d')
     end_date = datetime.strptime('2020-12-31', '%Y-%m-%d')
     random_date = start_date + timedelta(days=random.randint(0, (end_date - start_date).days))
@@ -63,10 +64,10 @@ def randomized_date():
 def convert_to_Confidential(data):
     return 'Confidential'
 
-def random_mobile_number():
+def random_mobile_number(data):
     return ''.join(random.choices('0123456789', k=10))
 
-def Random_String():
+def Random_String(data):
     return fake.random_letters(length=10)
 
 def Random_In(data):
@@ -144,97 +145,84 @@ def main():
         'database': database
     }
 
-    if st.button("Connect"):
-        if connection_type == "MySQL":
-            conn, tables, error = connect_to_mysql(connection_url)
-        elif connection_type == "PostgreSQL":
-            conn, tables, error = connect_to_postgres(connection_url)
-       
-        if error:
-            st.error(error)
-        elif not tables:
-            st.warning("No tables found in the selected database.")
-        else:
-            st.success("Connected to database successfully!")
+    if connection_type == "MySQL":
+        conn, tables, error = connect_to_mysql(connection_url)
+    elif connection_type == "PostgreSQL":
+        conn, tables, error = connect_to_postgres(connection_url)
+    if error:
+        st.error(error)
+    elif not tables:
+        st.warning("No tables found in the selected database.")
+    else:
+        st.success("Connected to database successfully!")
+        selected_table = st.selectbox("Select Table", tables)
+        st.write("You selected:", selected_table)
 
-            # Dropdown menu to select table
-            selected_table = st.selectbox("Select Table", tables)
-            st.write("You selected:", selected_table)
+        connection_url_main = {
+            'host': 'localhost',
+            'port': '5432',
+            'user': 'loki',
+            'password': "123",
+            'database': 'anonymizer2'
+        }
 
+        main_conn, tables_main, error = connect_to_main_database(connection_url_main)
 
-            connection_url_main = {
-                'host': 'localhost',
-                'port': '5432',
-                'user': 'loki',
-                'password': "123",
-                'database': 'anonymizer2'
-            }
+        main_cursor = main_conn.cursor()
 
-            main_conn,tables_main,error = connect_to_main_database(connection_url_main)
-            
-            main_cursor = main_conn.cursor()
-
-
-            querym = """
-                SELECT * FROM policy_rule_details
-                WHERE prule_id IN (SELECT prule_id FROM policy_rule_name 
-                    WHERE pid IN (SELECT pid FROM user_mapping_details WHERE db_user = %s AND pid IN (
-                            SELECT pid 
-                            FROM policy 
-                            WHERE conn_id = (
-                                SELECT conn_id 
-                                FROM connection_details 
-                                WHERE db_name = %s
-                            )
+        querym = """
+            SELECT * FROM policy_rule_details
+            WHERE prule_id IN (SELECT prule_id FROM policy_rule_name 
+                WHERE pid IN (SELECT pid FROM user_mapping_details WHERE db_user = %s AND pid IN (
+                        SELECT pid 
+                        FROM policy 
+                        WHERE conn_id = (
+                            SELECT conn_id 
+                            FROM connection_details 
+                            WHERE db_name = %s
                         )
                     )
-                    AND table_name = %s
-                );
-            """
+                )
+                AND table_name = %s
+            );
+        """
 
-            main_cursor.execute(querym, (user, database, selected_table))
-            rows = main_cursor.fetchall()
-            columns = [desc[0] for desc in main_cursor.description]
-            main_df = pd.DataFrame(rows, columns=columns)
-            main_cursor.close()
-            st.write("Main Database tables:")
-            st.write("")
-            st.write("Postgress")
-            st.dataframe(main_df)
+        main_cursor.execute(querym, (user, database, selected_table))
+        rows = main_cursor.fetchall()
+        columns = [desc[0] for desc in main_cursor.description]
+        main_df = pd.DataFrame(rows, columns=columns)
+        main_cursor.close()
+        st.write("Main Database tables:")
 
-            query = 'SELECT * FROM {}'.format(selected_table[0])
-            user_df = pd.read_sql(query,conn)
-            st.dataframe(user_df)
-            conn.close()
+        st.dataframe(main_df)
 
-            
-            def apply_transformations_to_user_df(user_df, main_df):
-                transformed_user_df = user_df.copy()
-                print(main_df)
-                for index, row in main_df.iterrows():
-                    column_name = row['column_name']
-                    function_name = row['function_name']
-                                        
-                    print("Applying transformation for column:", column_name)
-                    print("Using function:", function_name)
-                    
-                    if function_name and column_name in transformed_user_df.columns:
-                        function = globals().get(function_name)
-                        if function is not None:  # Check if function exists
-                            transformed_user_df[column_name] = transformed_user_df[column_name].apply(function)
-                            print("Transformation applied successfully")
-
-                return transformed_user_df
+        query = 'SELECT * FROM {}'.format(selected_table[0])
+        user_df = pd.read_sql(query, conn)
+        st.dataframe(user_df)
+        conn.close()
 
 
+        def apply_transformations_to_user_df(user_df, main_df):
+            transformed_user_df = user_df.copy()
+            print(main_df)
+            for index, row in main_df.iterrows():
+                column_name = row['column_name']
+                function_name = row['function_name']
+
+                print("Applying transformation for column:", column_name)
+                print("Using function:", function_name)
+
+                if function_name and column_name in transformed_user_df.columns:
+                    function = globals().get(function_name)
+                    if function is not None:  # Check if function exists
+                        transformed_user_df[column_name] = transformed_user_df[column_name].apply(function)
+                        print("Transformation applied successfully")
+
+            return transformed_user_df
 
 
-            transformed_user_df = apply_transformations_to_user_df(user_df, main_df)
-            st.dataframe(transformed_user_df)
-
-
-            
-
+        transformed_user_df = apply_transformations_to_user_df(user_df, main_df)
+        st.dataframe(transformed_user_df)
 
 if __name__ == "__main__":
     main()

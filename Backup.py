@@ -1,11 +1,75 @@
 import streamlit as st
 import mysql.connector
 import psycopg2
-import anon
 from faker import Faker
 import pandas as pd
 import random
 from datetime import datetime, timedelta
+
+
+fake = Faker()
+
+def random_integer(max_value):
+    return random.randint(0, max_value)
+
+
+def fake_email():
+    return fake.email()
+
+def fake_first_name(value):
+    fake = Faker()
+    return fake.first_name()
+
+def fake_last_name(value):
+    return fake.last_name()
+
+def fake_address():
+    return fake.street_address()
+
+def fake_city():
+    return fake.city()
+
+def fake_country():
+    return fake.country()
+
+def fake_postcode():
+    return fake.postcode()
+
+def random_zip():
+    return str(random.randint(10000, 99999))
+
+def generalize_daterange():
+    return '2020-01-01 to 2020-12-31'
+
+def generalize_numrange():
+    return '1 to 100'
+
+def generalize_timestamp():
+    return '2020-01-01 00:00:00'
+
+def partial_masking(data):
+    return data[:4] + '*' * (len(data) - 4)
+
+def full_masking(data):
+    return '*' * len(data)
+
+def randomized_date():
+    start_date = datetime.strptime('2020-01-01', '%Y-%m-%d')
+    end_date = datetime.strptime('2020-12-31', '%Y-%m-%d')
+    random_date = start_date + timedelta(days=random.randint(0, (end_date - start_date).days))
+    return random_date.strftime('%Y-%m-%d')
+
+def convert_to_Confidential(data):
+    return 'Confidential'
+
+def random_mobile_number():
+    return ''.join(random.choices('0123456789', k=10))
+
+def Random_String():
+    return fake.random_letters(length=10)
+
+def Random_In(data):
+    return random.choice(data)
 
 
 def connect_to_mysql(connection_url):
@@ -91,10 +155,9 @@ def main():
             st.warning("No tables found in the selected database.")
         else:
             st.success("Connected to database successfully!")
-
             # Dropdown menu to select table
             selected_table = st.selectbox("Select Table", tables)
-            st.write("You selected:", selected_table)
+            st.write("You selected:", st.session_state.selected_table)
 
 
             connection_url_main = {
@@ -132,33 +195,41 @@ def main():
             columns = [desc[0] for desc in main_cursor.description]
             main_df = pd.DataFrame(rows, columns=columns)
             main_cursor.close()
-            st.write("Main Database tables:", main_df)
+            st.write("Main Database tables:")
+            st.write("")
+            st.write("Postgress")
+            st.dataframe(main_df)
 
             query = 'SELECT * FROM {}'.format(selected_table[0])
             user_df = pd.read_sql(query,conn)
-            
-            print(user_df)
+            st.dataframe(user_df)
             conn.close()
 
             
             def apply_transformations_to_user_df(user_df, main_df):
                 transformed_user_df = user_df.copy()
-
+                print(main_df)
                 for index, row in main_df.iterrows():
                     column_name = row['column_name']
                     function_name = row['function_name']
+                                        
+                    print("Applying transformation for column:", column_name)
+                    print("Using function:", function_name)
                     
                     if function_name and column_name in transformed_user_df.columns:
                         function = globals().get(function_name)
                         if function is not None:  # Check if function exists
                             transformed_user_df[column_name] = transformed_user_df[column_name].apply(function)
+                            print("Transformation applied successfully")
 
                 return transformed_user_df
 
 
-            transformed_user_df = apply_transformations_to_user_df(user_df, main_df)
 
-            print(transformed_user_df)
+
+            transformed_user_df = apply_transformations_to_user_df(user_df, main_df)
+            st.dataframe(transformed_user_df)
+
 
             
 
